@@ -36,8 +36,11 @@ class WebDavSource:
     def _auth(self) -> tuple[str, str]:
         return (self.user, self.password)
 
-    def _list(self) -> list[tuple[str, str, int]]:
-        """返回 [(绝对 URL, 文件名, 字节数)]。"""
+    def list_remote(self) -> list[tuple[str, str, int, str]]:
+        """列出远程目录里的文件，返回 [(绝对 URL, 文件名, 字节数, 修改时间)]。
+
+        也供 `cli check` 做连通性探测使用，因此不以下划线开头。
+        """
         url = urljoin(self.base_url, self.remote_dir + "/")
         resp = requests.request(
             "PROPFIND",
@@ -50,7 +53,7 @@ class WebDavSource:
         resp.raise_for_status()
 
         root = ET.fromstring(resp.content)
-        entries: list[tuple[str, str, int]] = []
+        entries: list[tuple[str, str, int, str]] = []
         for node in root.findall("d:response", _NS):
             href = node.findtext("d:href", default="", namespaces=_NS)
             if not href:
@@ -66,7 +69,8 @@ class WebDavSource:
                 size = int(size_text)
             except ValueError:
                 size = 0
-            entries.append((urljoin(self.base_url, href.lstrip("/")), name, size))
+            lastmod = node.findtext(".//d:getlastmodified", default="", namespaces=_NS) or ""
+            entries.append((urljoin(self.base_url, href.lstrip("/")), name, size, lastmod.strip()))
         return entries
 
     def fetch(self, since: date) -> list[RawItem]:
@@ -78,7 +82,7 @@ class WebDavSource:
         cutoff = datetime.combine(since, datetime.min.time(), tzinfo=tz) - timedelta(days=1)
         items: list[RawItem] = []
 
-        for url, name, _size in self._list():
+        for url, name, size, lastmod in self.list_remote():
             suffix = Path(name).suffix.lower()
             if suffix not in AUDIO_EXTS and suffix not in TEXT_EXTS:
                 continue
@@ -96,6 +100,9 @@ class WebDavSource:
                 continue
 
             item_id = hashlib.sha1(name.encode("utf-8")).hexdigest()[:16]
+            # PROPFIND 偶尔不给 content-length，退回本地文件大小
+            effective_size = size or (local.stat().st_size if local.exists() else 0)
+            revision = f"{effective_size}:{lastmod}" if lastmod else ""
             if suffix in TEXT_EXTS:
                 text = local.read_text(encoding="utf-8", errors="ignore")
                 if not text.strip():
@@ -109,6 +116,7 @@ class WebDavSource:
                         media_type="text",
                         text=text,
                         origin="webdav",
+                        revision=revision,
                     )
                 )
             else:
@@ -120,6 +128,7 @@ class WebDavSource:
                         recorded_at=recorded_at,
                         media_type="audio",
                         origin="webdav",
+                        revision=revision,
                     )
                 )
 

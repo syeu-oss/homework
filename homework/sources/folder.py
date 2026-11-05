@@ -40,6 +40,8 @@ class FolderSource:
                 continue
 
             item_id = hashlib.sha1(str(path).encode("utf-8")).hexdigest()[:16]
+            stat = path.stat()
+            revision = f"{stat.st_size}:{int(stat.st_mtime)}"
             if suffix in TEXT_EXTS:
                 try:
                     text = path.read_text(encoding="utf-8", errors="ignore")
@@ -56,6 +58,7 @@ class FolderSource:
                         media_type="text",
                         text=text,
                         origin="folder",
+                        revision=revision,
                     )
                 )
             else:
@@ -67,6 +70,7 @@ class FolderSource:
                         recorded_at=recorded_at,
                         media_type="audio",
                         origin="folder",
+                        revision=revision,
                     )
                 )
 

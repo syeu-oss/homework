@@ -20,7 +20,7 @@ from pathlib import Path
 
 from .config import SETTINGS
 from .models import now_local
-from .pipeline import doctor, mark_done, run_once
+from .pipeline import doctor, mark_done, processed_docs, probe_webdav, run_once
 from .store import load_pool
 
 
@@ -98,6 +98,34 @@ def _cmd_selftest(_: argparse.Namespace) -> int:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _cmd_check(args: argparse.Namespace) -> int:
+    """逐个外链做真实探测：手机同步 → 网盘 → 推送，哪一环断了一目了然。"""
+    print("手机链路自检\n" + "=" * 52)
+    failed = 0
+
+    ok, detail = probe_webdav(SETTINGS)
+    print(f"[{'OK  ' if ok else 'FAIL'}] 网盘目录：{detail}")
+    failed += 0 if ok else 1
+
+    docs = processed_docs(SETTINGS)
+    pool = load_pool(SETTINGS.pool_path)
+    print(f"[OK  ] 已入池：处理过 {docs} 个文件，作业池 {len(pool)} 条")
+
+    from .emit import notify
+
+    has_channel = bool(SETTINGS.feishu_webhook or SETTINGS.webhook_url)
+    if args.notify:
+        sent = notify.send(SETTINGS, "作业链路自检：这条能收到，推送就通了。")
+        print(f"[{'OK  ' if sent else 'FAIL'}] 推送测试：{'已发送，看手机' if sent else '未配置 webhook 或发送失败'}")
+        failed += 0 if sent else 1
+    else:
+        print(f"[{'OK  ' if has_channel else 'WARN'}] 推送配置：{'已配置（加 --notify 可发一条测试）' if has_channel else '未配置，只生成页面不推送'}")
+
+    print("=" * 52)
+    print("全部打通。" if not failed else "上面标 FAIL 的按提示修，其余环节是好的。")
+    return 0 if not failed else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="homework", description="作业自动提醒链路")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -119,6 +147,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_test = sub.add_parser("selftest", help="用内置样例自测")
     p_test.set_defaults(func=_cmd_selftest)
+
+    p_check = sub.add_parser("check", help="探测手机链路：网盘、作业池、推送")
+    p_check.add_argument("--notify", action="store_true", help="真发一条测试消息到手机")
+    p_check.set_defaults(func=_cmd_check)
 
     return parser
 

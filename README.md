@@ -43,6 +43,9 @@ python -m homework.cli selftest
 # 2. 环境自检
 python -m homework.cli doctor
 
+# 2b. 手机链路探测（真连网盘 / 发一条测试推送）
+python -m homework.cli check --notify
+
 # 3. 正式跑一次
 python -m homework.cli run
 

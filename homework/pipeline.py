@@ -16,10 +16,12 @@ from .sources import get_source
 from .store import (
     already_notified,
     already_processed,
+    already_seen,
     load_pool,
     load_state,
     mark_notified,
     mark_processed,
+    mark_seen,
     merge_pool,
     prune_state,
     save_pool,
@@ -74,6 +76,11 @@ def run_once(settings: Settings = SETTINGS, force: bool = False, do_notify: bool
     extracted_all = []
 
     for item in raw_items:
+        # 先按文件版本判断，能把「同一段录音被反复转写」挡在转写之前
+        if not force and already_seen(state, item.id, item.revision):
+            stats["skipped"] += 1
+            continue
+
         try:
             text = transcriber.transcribe(item)
         except Exception as exc:
@@ -107,6 +114,7 @@ def run_once(settings: Settings = SETTINGS, force: bool = False, do_notify: bool
         found = [a for a in found if a.confidence >= settings.min_confidence]
         extracted_all.extend(found)
         mark_processed(state, item.id, fingerprint)
+        mark_seen(state, item.id, item.revision)
 
     stats["extracted"] = len(extracted_all)
     merged, added = merge_pool(pool, extracted_all)
@@ -207,3 +215,46 @@ def doctor(settings: Settings = SETTINGS) -> list[tuple[str, bool, str]]:
     )
 
     return checks
+
+
+# 常见失败码对应的排查方向。网盘类问题 90% 出在这几种。
+_WEBDAV_HINTS = {
+    400: "地址格式不对，坚果云 WebDAV 根地址是 https://dav.jianguoyun.com/dav/",
+    401: "账号或密码不对。坚果云要用「安全选项」里生成的应用密码，不是登录密码",
+    403: "账号没有该目录权限，或应用密码已失效",
+    404: "远程目录不存在。先在网盘根目录建一个 hw 文件夹（对应 WEBDAV_DIR=/hw）",
+    405: "服务端不接受 PROPFIND，确认填的是 WebDAV 地址而不是网页地址",
+}
+
+
+def probe_webdav(settings: Settings) -> tuple[bool, str]:
+    """真连一次 WebDAV，列出目录。返回 (是否通过, 人话说明)。"""
+    import requests
+
+    from .sources.base import AUDIO_EXTS, TEXT_EXTS
+    from .sources.webdav import WebDavSource
+
+    if not (settings.webdav_url and settings.webdav_user and settings.webdav_password):
+        return False, "缺少 WEBDAV_URL / WEBDAV_USER / WEBDAV_PASSWORD"
+
+    try:
+        entries = WebDavSource(settings).list_remote()
+    except requests.HTTPError as exc:
+        code = getattr(exc.response, "status_code", 0) or 0
+        return False, f"列目录失败 HTTP {code}：{_WEBDAV_HINTS.get(code, '检查地址与账号')}"
+    except requests.RequestException as exc:
+        return False, f"连不上网盘：{exc}"
+
+    usable = [e for e in entries if Path(e[1]).suffix.lower() in AUDIO_EXTS | TEXT_EXTS]
+    if not usable:
+        return True, f"连接正常，{settings.webdav_dir} 里还没有录音文件（手机同步任务没生效？）"
+
+    newest = max(usable, key=lambda e: e[1])
+    return True, f"连接正常，{len(usable)} 个可处理文件，最新：{newest[1]}"
+
+
+def processed_docs(settings: Settings) -> int:
+    """已处理过的音频/文本文件数，用来判断录音有没有真的进过链路。"""
+    state = load_state(settings.state_path)
+    docs = state.get("docs", {}) if isinstance(state, dict) else {}
+    return len(docs)

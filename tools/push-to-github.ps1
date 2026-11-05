@@ -52,8 +52,9 @@ if ($remotes -contains "origin") {
 $pushUrl = $RepoUrl -replace '^https://', "https://$Token@"
 
 Write-Host "正在推送，仓库较大时可能需要几十秒……" -ForegroundColor Cyan
-git push -u $pushUrl main
+$output = (git push -u $pushUrl main 2>&1 | Out-String)
 $code = $LASTEXITCODE
+Write-Host $output
 
 # 立刻把带 token 的地址换掉，避免留在仓库配置里
 git remote set-url origin $RepoUrl
@@ -64,10 +65,22 @@ if ($code -eq 0) {
     Write-Host "下一步：打开仓库 Settings 配置 Secrets 和 Pages，照 docs/deploy.md 做。" -ForegroundColor Green
 } else {
     Write-Host ""
-    Write-Host "推送失败。按顺序检查：" -ForegroundColor Red
-    Write-Host "  1. Token 是否勾了 workflow 权限（缺了会被拒，因为仓库里有 .github/workflows）"
-    Write-Host "  2. 仓库地址是否写错，或仓库不是空仓库"
-    Write-Host "  3. 网络是否稳定，重跑一次通常就好"
+    Write-Host "推送失败。诊断：" -ForegroundColor Red
+
+    if ($output -match 'workflow') {
+        Write-Host "  → Token 缺少 workflow 权限。到 https://github.com/settings/tokens 重新生成，"
+        Write-Host "    同时勾选 repo 和 workflow 两个权限。"
+    } elseif ($output -match '403|Permission to .* denied') {
+        Write-Host "  → Token 权限不足或已失效。重新生成，勾 repo + workflow。"
+    } elseif ($output -match '404|Repository not found') {
+        Write-Host "  → 仓库找不到。要么地址写错，要么 token 没有 repo 权限。"
+    } elseif ($output -match 'rejected|non-fast-forward|fetch first') {
+        Write-Host "  → 远端仓库不是空的。删掉仓库重建，或先执行 git pull --allow-unrelated-histories。"
+    } elseif ($output -match 'Could not resolve|timed out|Failed to connect') {
+        Write-Host "  → 网络连不上 GitHub。重跑一次，或换网络再试。"
+    } else {
+        Write-Host "  → 未识别的错误，请把上面 git 输出的最后几行发出来。"
+    }
 }
 
 exit $code

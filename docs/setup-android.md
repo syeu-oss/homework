@@ -4,6 +4,56 @@
 
 ---
 
+## 现在到哪一步了
+
+| 环节 | 状态 | 判断依据 |
+|---|---|---|
+| 云端定时任务 | ✅ 已通 | Actions 每 30 分钟跑一次，Pages 看板每天自动刷新日期 |
+| 看板 / 日历 / Markdown 产出 | ✅ 已通 | 线上 `https://syeu-oss.github.io/homework/` 可打开 |
+| 网盘（WebDAV）读取 | ❌ 未配 | 云端没有 `WEBDAV_*` 密钥，取数直接失败，作业池里还是样例数据 |
+| 手机录音自动上传 | ❌ 未配 | FolderSync 还没建同步任务 |
+| 飞书推送 | ❌ 未配 | 没有 `FEISHU_WEBHOOK`，不会发消息 |
+
+也就是说：**电脑侧和云端全部就绪，缺的正是手机上这一段。**
+作业池现在那 4 条是 demo 样例（数据结构 / 操作系统示例文本），不是你的真实作业，接上真实录音前先按下面第 0 步清掉。
+
+### 0. 清掉样例数据（只做一次）
+
+```powershell
+Remove-Item data/homework.json, data/state.json -ErrorAction SilentlyContinue
+```
+
+### 5 个动作，顺序不要乱
+
+1. **网盘建目录**：坚果云根目录建 `hw`，再在「安全选项 → 添加应用」生成一个应用密码（不是登录密码）。
+2. **GitHub 填密钥**：仓库 Settings → Secrets and variables → Actions，加 `WEBDAV_URL` / `WEBDAV_USER` / `WEBDAV_PASSWORD`，Variables 里 `SOURCE=webdav`、`TRANSCRIBE_ENGINE=whisper`。
+3. **手机装 FolderSync**，建「仅上传」任务把录音目录传到 `/hw`，并做保活设置（见下文第一节）。
+4. **飞书建机器人**，把 webhook 填进 `FEISHU_WEBHOOK`。
+5. **验证**：手机录一段带作业的话，等 15 分钟后按下面方法逐环确认。
+
+### 每一环怎么单独验证
+
+```bash
+# 本机跑（先把环境变量设成和 GitHub Secrets 一样的值）
+$env:SOURCE="webdav"; $env:WEBDAV_URL="https://dav.jianguoyun.com/dav/"; $env:WEBDAV_USER="你的账号"; $env:WEBDAV_PASSWORD="应用密码"
+python -m homework.cli check --notify
+```
+
+`check` 会真连一次网盘、报出目录里有几个可处理文件、并（加 `--notify` 时）发一条飞书测试消息，哪一环断了一眼能看到：
+
+```
+[OK  ] 网盘目录：连接正常，3 个可处理文件，最新：录音_20261105_100212.m4a
+[OK  ] 已入池：处理过 3 个文件，作业池 5 条
+[OK  ] 推送测试：已发送，看手机
+```
+
+- 网盘 FAIL 且提示 401 → 密码用错了，坚果云必须用应用密码
+- 网盘 FAIL 且提示 404 → 网盘里没有 `hw` 目录
+- 网盘 OK 但文件数是 0 → FolderSync 没传上去，回到手机端查保活
+- 网盘 OK 有文件、作业池却没变 → 云端还没跑，去 Actions 里手动 Run workflow
+
+---
+
 ## 一、手机端（3 步）
 
 ### 1. 确认录音机开着 AI 转写（可选但建议）

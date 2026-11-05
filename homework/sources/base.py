@@ -35,6 +35,10 @@ class RawItem:
     text: str | None = None
     origin: str = "local"
     course_hint: str | None = None
+    # 远端文件的版本标记（大小 + 修改时间）。用途只有一个：
+    # 云端每 30 分钟就会重扫一次，靠它判断「这个文件处理过没有」，
+    # 避免把同一段一小时的录音反复转写。空字符串表示无法判断。
+    revision: str = ""
 
     @property
     def fingerprint_hint(self) -> str:

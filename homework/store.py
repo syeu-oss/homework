@@ -113,13 +113,15 @@ def set_status(items: list[Assignment], assignment_id: str, status: str) -> bool
 
 
 def load_state(path: Path) -> dict[str, Any]:
+    empty = {"version": SCHEMA_VERSION, "docs": {}, "revisions": {}, "notified": {}}
     if not path.exists():
-        return {"version": SCHEMA_VERSION, "docs": {}, "notified": {}}
+        return dict(empty)
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
-        return {"version": SCHEMA_VERSION, "docs": {}, "notified": {}}
+        return dict(empty)
     raw.setdefault("docs", {})
+    raw.setdefault("revisions", {})
     raw.setdefault("notified", {})
     return raw
 
@@ -138,6 +140,22 @@ def already_processed(state: dict[str, Any], doc_id: str, fingerprint: str) -> b
 
 def mark_processed(state: dict[str, Any], doc_id: str, fingerprint: str) -> None:
     state.setdefault("docs", {})[doc_id] = fingerprint
+
+
+def already_seen(state: dict[str, Any], doc_id: str, revision: str) -> bool:
+    """该文件这个版本是否已经处理过。
+
+    比文本指纹更早一步生效：不必转写就知道要不要跳过，
+    云端每 30 分钟重扫一次时不会把一小时录音反复转写。
+    """
+    if not revision:
+        return False
+    return state.get("revisions", {}).get(doc_id) == revision
+
+
+def mark_seen(state: dict[str, Any], doc_id: str, revision: str) -> None:
+    if revision:
+        state.setdefault("revisions", {})[doc_id] = revision
 
 
 def already_notified(state: dict[str, Any], day: date, kind: str) -> bool:
@@ -168,10 +186,12 @@ __all__ = [
     "STATUS_PENDING",
     "already_notified",
     "already_processed",
+    "already_seen",
     "load_pool",
     "load_state",
     "mark_notified",
     "mark_processed",
+    "mark_seen",
     "merge_pool",
     "prune_state",
     "save_pool",
