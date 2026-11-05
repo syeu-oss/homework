@@ -34,6 +34,18 @@
 | 作业 ID 不含截止日期 | 日期是后补的，含日期会让同一作业分裂成两条 |
 | 日历只做可视化 | 多数 Android 系统日历对「订阅日历」不触发闹钟，只显示不响 |
 
+## 手机上的日常
+
+**上课**：按一次录音键。没别的动作。
+
+**每天 7–10 点**：飞书收到一条汇总（逾期置顶 → 今天 → 明天 → 最近一项），末尾有看板链接。哪怕当天没有作业也会发一条，这样「没消息」和「链路挂了」能区分开。
+
+**做完一项**：打开看板 → 卡片上点「标记完成」→ GitHub 预填好一个 issue → 提交。云端自动勾掉，30 秒内看板刷新。不需要 token，不需要额外 App。
+
+**临时加的作业**（老师口头说、群里通知）：看板右上角「＋ 记一条」→ 用大白话写「数据结构，下周三之前交第六章习题」→ 提交，剩下的交给规则引擎。
+
+**链路出错**：云端会推一条告警，每天最多一条，不会反复打扰。
+
 ## 快速开始
 
 ```bash
@@ -84,6 +96,7 @@ rm -f data/homework.json data/state.json
 | `TRANSCRIBE_CMD` | custom 模式的命令，支持 `{input}` `{output}` | — |
 | `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | 可选的抽取增强 | — |
 | `FEISHU_WEBHOOK` | 飞书自定义机器人地址 | — |
+| `SITE_REPO` | 仓库全名 `owner/repo`，看板的「完成 / 记一条」靠它拼链接 | `syeu-oss/homework` |
 | `REMIND_MORNING` | 早间提醒窗口 | `07:00-10:00` |
 | `REMIND_EVENING` | 晚间提醒窗口 | `19:00-22:00` |
 
@@ -97,7 +110,8 @@ rm -f data/homework.json data/state.json
 
 | 现象 | 先看这里 |
 |---|---|
-| 没有推送 | `python -m homework.cli doctor` 看推送通道是否配置 |
+| 没有推送 | `python -m homework.cli doctor` 看推送通道是否配置；收到过「链路出错」说明是取数问题而不是推送问题 |
 | 抽不出作业 | 看 `data/errors.log`，确认转写文本是否正常 |
 | 日期不对 | 进 `homework/timeparse.py`，或检查 `source.time_phrase` |
+| 点了「标记完成」没反应 | 去仓库 Issues 看那条 issue 是否被处理；被关闭说明成功，看板等下一次定时刷新 |
 | 日历不响 | 这是已知平台限制，靠推送而不是日历 |

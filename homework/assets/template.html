@@ -361,6 +361,70 @@
   .is-pending .due-date { color: var(--ink-3); font-size: 13px; }
   .is-pending .due-delta { background: rgba(90, 88, 80, .09); }
 
+  /* ---------- 卡片动作 ---------- */
+  .card-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 11px;
+    padding-top: 9px;
+    border-top: 1px dashed var(--line);
+  }
+
+  .act {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--paper);
+    color: var(--ink-2);
+    font-size: 12.5px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background .16s var(--ease), color .16s var(--ease),
+                border-color .16s var(--ease), transform .16s var(--ease);
+  }
+
+  .act::before {
+    content: "";
+    width: 9px;
+    height: 9px;
+    border: 1.6px solid currentColor;
+    border-radius: 3px;
+    opacity: .75;
+  }
+
+  .act:hover, .act:focus-visible {
+    background: var(--indigo);
+    border-color: var(--indigo);
+    color: #fff;
+    outline: none;
+    transform: translateY(-1px);
+  }
+
+  .act:active { transform: translateY(0); }
+
+  .meta-act {
+    margin-left: auto;
+    color: var(--indigo-2);
+    font-weight: 600;
+    text-decoration: none;
+    font-size: 12px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    transition: background .16s var(--ease), color .16s var(--ease);
+  }
+
+  .meta-act:hover, .meta-act:focus-visible {
+    background: rgba(46, 90, 158, .1);
+    color: var(--indigo);
+    outline: none;
+  }
+
+  .meta-act[hidden] { display: none; }
+
   /* 展开详情 */
   .detail {
     grid-template-rows: 0fr;
@@ -515,7 +579,10 @@
         </div>
       </div>
     </div>
-    <p class="meta"><span class="dot-live"></span><span id="updatedAt">正在加载</span></p>
+    <p class="meta">
+      <span class="dot-live"></span><span id="updatedAt">正在加载</span>
+      <a class="meta-act" id="addBtn" href="#" target="_blank" rel="noopener" hidden>＋ 记一条</a>
+    </p>
   </header>
 
   <section class="stats" id="stats" aria-label="概览"></section>
@@ -578,6 +645,27 @@ const DATA = /*__DATA__*/null;
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
+  }
+
+  // 写入通道用 GitHub Issue：不用在页面里放 token，也不用额外后端。
+  // 点一下 → 预填好 issue → 提交 → Actions 把你的事办掉。
+  function issueUrl(title, body) {
+    if (!DATA.repo) return '';
+    return 'https://github.com/' + DATA.repo + '/issues/new?title='
+      + encodeURIComponent(title) + '&body=' + encodeURIComponent(body);
+  }
+
+  function doneUrl(it) {
+    return issueUrl('[done] ' + it.id,
+      '课程：' + (it.course || '') + '\n作业：' + (it.title || '') + '\n截止：' + (it.dueText || ''));
+  }
+
+  const addBtn = document.getElementById('addBtn');
+  if (DATA.repo) {
+    addBtn.hidden = false;
+    addBtn.href = issueUrl('[add] 新作业',
+      '把老师的话原样贴在这里，或写清楚课程 + 作业 + 截止时间。\n'
+      + '例如：数据结构，下周三之前把第六章习题交到学习通。\n');
   }
 
   // 头部
@@ -682,12 +770,20 @@ const DATA = /*__DATA__*/null;
               </div>
             </div>
           </div>
+          ${DATA.repo ? `<div class="card-actions">
+            <a class="act" href="${doneUrl(it)}" target="_blank" rel="noopener">标记完成</a>
+          </div>` : ''}
         </div>`;
 
       const toggle = () => card.classList.toggle('open');
       card.addEventListener('click', toggle);
       card.addEventListener('keydown', e => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+      });
+
+      // 动作按钮不该顺带把卡片展开
+      card.querySelectorAll('a.act').forEach(a => {
+        a.addEventListener('click', e => e.stopPropagation());
       });
 
       list.appendChild(card);

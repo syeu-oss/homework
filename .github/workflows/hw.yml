@@ -11,6 +11,10 @@ on:
         description: "忽略已处理记录，强制重跑"
         type: boolean
         default: false
+  # 看板上的「标记完成」「＋记一条」就是开一个 issue，
+  # 所以手机上不需要 token、不需要装 App，也不用另外的后端。
+  issues:
+    types: [opened]
 
 concurrency:
   group: homework-reminder
@@ -20,9 +24,11 @@ permissions:
   contents: write
   pages: write
   id-token: write
+  issues: write
 
 jobs:
   build:
+    if: github.event_name != 'issues'
     runs-on: ubuntu-latest
     env:
       TZ: Asia/Shanghai
@@ -38,6 +44,7 @@ jobs:
       LLM_MODEL: ${{ vars.LLM_MODEL || 'gpt-4o-mini' }}
       FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
       SITE_BASE_URL: ${{ vars.SITE_BASE_URL }}
+      SITE_REPO: ${{ github.repository }}
 
     steps:
       - name: 检出仓库
@@ -103,6 +110,7 @@ jobs:
 
   deploy:
     needs: build
+    if: github.event_name != 'issues'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -111,3 +119,71 @@ jobs:
       - name: 部署到 GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  triage:
+    if: github.event_name == 'issues' && startsWith(github.event.issue.title, '[')
+    runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Shanghai
+      SOURCE: folder
+      SOURCE_DIR: data/inbox
+      TRANSCRIBE_ENGINE: passthrough
+      SITE_REPO: ${{ github.repository }}
+      SITE_BASE_URL: ${{ vars.SITE_BASE_URL }}
+      FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+      LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 执行指令
+        run: |
+          TITLE=$(jq -r '.issue.title' "$GITHUB_EVENT_PATH")
+          BODY=$(jq -r '.issue.body // ""' "$GITHUB_EVENT_PATH")
+          echo "收到指令：$TITLE"
+          case "$TITLE" in
+            "[done]"*)
+              ID=$(printf '%s' "$TITLE" | sed 's/^\[done\][[:space:]]*//')
+              python -m homework.cli done "$ID"
+              ;;
+            "[add]"*)
+              mkdir -p data/inbox
+              printf '%s\n' "$BODY" > "data/inbox/manual_$(date +%Y%m%d_%H%M%S).txt"
+              python -m homework.cli run --no-notify
+              ;;
+            *)
+              echo "不是可识别的指令，忽略。"
+              ;;
+          esac
+
+      - name: 提交产物
+        run: |
+          git config user.name "homework-bot"
+          git config user.email "homework-bot@users.noreply.github.com"
+          git add data/homework.json data/state.json data/inbox HOMEWORK.md index.html data/homework.ics 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "没有变化，跳过提交"
+          else
+            git commit -m "chore: 处理看板操作 #${{ github.event.issue.number }} [skip ci]"
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" || true
+            git push
+          fi
+
+      - name: 回复并关闭 issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NO: ${{ github.event.issue.number }}
+        run: |
+          gh issue close "$ISSUE_NO" --comment "已处理，看板稍后刷新。" || true

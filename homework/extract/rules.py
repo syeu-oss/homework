@@ -18,7 +18,7 @@ _MAX_TITLE = 60
 _TRAILING_PUNCT = re.compile(r"[\s，,。.;；、]+$")
 
 
-def clean_title(sentence: str) -> str:
+def clean_title(sentence: str, course: str = "") -> str:
     """把口语化的作业句压缩成一句能看懂的话。"""
     text = sentence.strip()
     text = _TRAILING_PUNCT.sub("", text)
@@ -30,6 +30,12 @@ def clean_title(sentence: str) -> str:
             if text.startswith(noise):
                 text = text[len(noise):].lstrip("，,、 ：:")
                 changed = True
+
+    # 手动补录常写成「数据结构，下周三之前交…」，课程已经单独成一栏，标题里别再重复
+    if course and course != "未指定课程":
+        head = re.match(rf"^{re.escape(course)}\s*[，,：:、\s]\s*", text)
+        if head:
+            text = text[head.end():]
 
     text = re.sub(r"^(那么|然后|另外|还有|所以)", "", text).strip()
     if len(text) > _MAX_TITLE:
@@ -82,7 +88,7 @@ def extract_from_doc(doc: Doc, min_score: int = 3) -> list[Assignment]:
             continue
 
         course = doc.course_hint or match_course(window) or match_course(doc.text) or "未指定课程"
-        title = clean_title(sentence)
+        title = clean_title(sentence, course)
         if not title:
             continue
 

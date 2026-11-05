@@ -76,10 +76,22 @@ class Settings:
 
     # 站点
     site_base_url: str = field(default_factory=lambda: _env("SITE_BASE_URL"))
+    # 仓库全名，形如 owner/repo。看板上的「标记完成」靠它拼 GitHub 链接。
+    site_repo: str = field(default_factory=lambda: _env("SITE_REPO") or "syeu-oss/homework")
 
     # 预算保护
     max_audio_minutes: int = field(default_factory=lambda: _env_int("MAX_AUDIO_MINUTES", 180))
     min_confidence: float = field(default_factory=lambda: _env_float("MIN_CONFIDENCE", 0.45))
+
+    @property
+    def site_url(self) -> str:
+        """页面地址。显式配了就用，否则按仓库名推 GitHub Pages 地址。"""
+        if self.site_base_url:
+            return self.site_base_url.rstrip("/") + "/"
+        owner, _, name = self.site_repo.partition("/")
+        if owner and name:
+            return f"https://{owner}.github.io/{name}/"
+        return ""
 
     @property
     def pool_path(self) -> Path:

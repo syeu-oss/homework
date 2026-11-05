@@ -15,7 +15,7 @@ _PLACEHOLDER = "/*__DATA__*/null"
 _WEEKDAYS = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
 
 
-def _payload(items: list[Assignment], today: date) -> dict:
+def _payload(items: list[Assignment], today: date, repo: str = "") -> dict:
     week_start = today - timedelta(days=today.weekday())
     week_end = week_start + timedelta(days=6)
 
@@ -75,6 +75,7 @@ def _payload(items: list[Assignment], today: date) -> dict:
     nearest = next((r for r in rows if r["group"] != "pending"), None)
 
     return {
+        "repo": repo,
         "weekLabel": f"{week_start.strftime('%m.%d')} - {week_end.strftime('%m.%d')}",
         "today": today.isoformat(),
         "todayLabel": today.strftime("%Y年%m月%d日") + " " + _WEEKDAYS[today.weekday()],
@@ -103,11 +104,17 @@ def _copy_assets(target_dir: Path) -> None:
             pass
 
 
-def build(items: list[Assignment], today: date, output: Path, updated_at: str = "") -> bool:
+def build(
+    items: list[Assignment],
+    today: date,
+    output: Path,
+    updated_at: str = "",
+    repo: str = "",
+) -> bool:
     if not _TEMPLATE.exists():
         return False
 
-    data = _payload(items, today)
+    data = _payload(items, today, repo)
     data["updatedAt"] = updated_at
     payload = json.dumps(data, ensure_ascii=False)
 

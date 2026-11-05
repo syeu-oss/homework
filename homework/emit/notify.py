@@ -52,19 +52,53 @@ def _line(item: Assignment, today: date) -> str:
     return f"· [{item.course}] {item.title}\n  {due_text}｜{badge}"
 
 
-def build_morning(items: list[Assignment], today: date) -> str:
-    """早间汇总：今天与明天到期的作业。"""
-    urgent = [i for i in items if i.due and 0 <= (i.due - today).days <= 1]
-    if not urgent:
-        return ""
-    lines = [f"作业提醒｜今天 {today.strftime('%m-%d')}", ""]
-    lines.extend(_line(i, today) for i in sorted(urgent, key=lambda x: x.due))
-    lines.append("")
-    lines.append("现在动手，别等晚上。")
+def _footer(site_url: str) -> list[str]:
+    return ["", f"看板：{site_url}"] if site_url else []
+
+
+def build_morning(items: list[Assignment], today: date, site_url: str = "") -> str:
+    """早间汇总：每天固定一条，逾期置顶，再今天/明天，最后最近一项。
+
+    以前没有紧急作业就整条不发，用户无法区分「今天没作业」和「链路挂了」。
+    现在永远发一条，形成一个每天都会到的确定性信号。
+    """
+    dated = [i for i in items if i.due]
+    overdue = sorted([i for i in dated if i.due < today], key=lambda x: x.due)
+    today_items = sorted([i for i in dated if i.due == today], key=lambda x: x.course)
+    tomorrow = sorted([i for i in dated if (i.due - today).days == 1], key=lambda x: x.course)
+    later = sorted([i for i in dated if i.due > today and (i.due - today).days > 1], key=lambda x: x.due)
+
+    lines = [f"作业提醒｜{today.strftime('%m-%d')}", ""]
+
+    if overdue:
+        lines.append(f"【逾期 {len(overdue)}】")
+        lines.extend(_line(i, today) for i in overdue[:5])
+        lines.append("")
+    if today_items:
+        lines.append("【今天】")
+        lines.extend(_line(i, today) for i in today_items[:5])
+        lines.append("")
+    if tomorrow:
+        lines.append("【明天】")
+        lines.extend(_line(i, today) for i in tomorrow[:5])
+        lines.append("")
+
+    if not (overdue or today_items or tomorrow):
+        if later:
+            nxt = later[0]
+            lines.append("今天没有要交的作业。")
+            lines.append("")
+            lines.append("【最近一项】")
+            lines.append(_line(nxt, today))
+        else:
+            lines.append("今天没有要交的作业，作业池也是空的。")
+            lines.append("上课记得点录音，剩下的交给云端。")
+
+    lines.extend(_footer(site_url))
     return "\n".join(lines)
 
 
-def build_evening(items: list[Assignment], today: date, days_before: int = 3) -> str:
+def build_evening(items: list[Assignment], today: date, days_before: int = 3, site_url: str = "") -> str:
     """前夜汇总：未来几天到期 + 已逾期。"""
     horizon = today + timedelta(days=days_before)
     focus = [
@@ -80,7 +114,21 @@ def build_evening(items: list[Assignment], today: date, days_before: int = 3) ->
     if overdue:
         lines.append("")
         lines.append(f"有 {len(overdue)} 项已经逾期，先处理这些。")
+    lines.extend(_footer(site_url))
     return "\n".join(lines)
+
+
+def build_alert(errors: list[str], today: date, site_url: str = "") -> str:
+    """链路出错时的告警。没有这条，密钥过期这类问题会静默到你自己发现。"""
+    lines = [f"作业链路出错｜{today.strftime('%m-%d')}", ""]
+    lines.extend(f"· {e[:120]}" for e in errors[:3])
+    if len(errors) > 3:
+        lines.append(f"· 另有 {len(errors) - 3} 条，见仓库 data/errors.log")
+    lines.append("")
+    lines.append("历史作业还在，不会丢。修好配置后下一次运行会自动补上。")
+    lines.extend(_footer(site_url))
+    return "\n".join(lines)
+
 
 
 def window_of(now_hm: str, window: str) -> bool:

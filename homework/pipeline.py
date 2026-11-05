@@ -39,6 +39,20 @@ def _log_error(settings: Settings, message: str) -> None:
         pass
 
 
+def _manual_items(settings: Settings, since) -> list:
+    """data/inbox 里的纯文本：看板「＋记一条」走的就是这条路。
+
+    任何数据源都要额外吃这一份，否则手动补的作业在 webdav 模式下永远不生效。
+    """
+    from .sources.folder import FolderSource
+
+    try:
+        items = FolderSource(settings.inbox_dir, settings.timezone).fetch(since)
+    except OSError:
+        return []
+    return [i for i in items if i.media_type == "text"]
+
+
 def run_once(settings: Settings = SETTINGS, force: bool = False, do_notify: bool = True) -> dict:
     settings.ensure_dirs()
     now = now_local(settings.timezone)
@@ -83,6 +97,11 @@ def run_once(settings: Settings = SETTINGS, force: bool = False, do_notify: bool
         stats["errors"].append(f"取数失败: {exc}")
         _log_error(settings, f"[fetch] {exc}\n{traceback.format_exc()}")
         raw_items = []
+
+    manual = _manual_items(settings, since)
+    if manual:
+        known = {i.id for i in raw_items}
+        raw_items = raw_items + [m for m in manual if m.id not in known]
 
     stats["fetched"] = len(raw_items)
     extracted_all = []
@@ -138,7 +157,7 @@ def run_once(settings: Settings = SETTINGS, force: bool = False, do_notify: bool
     # 产出
     ics.write(settings.data_dir / "homework.ics", merged)
     markdown.write(settings.root / "HOMEWORK.md", merged, today, stamp)
-    site.build(merged, today, settings.root / "index.html", stamp)
+    site.build(merged, today, settings.root / "index.html", stamp, settings.site_repo)
 
     active = [a for a in merged if a.status in (STATUS_OPEN, STATUS_PENDING)]
     stats["open"] = len([a for a in active if a.status == STATUS_OPEN and a.due])
@@ -147,16 +166,24 @@ def run_once(settings: Settings = SETTINGS, force: bool = False, do_notify: bool
     # 提醒：窗口内首次运行才发，state 保证当天不重复
     if do_notify:
         hm = now.strftime("%H:%M")
+        site_url = settings.site_url
         if notify.window_of(hm, settings.remind_morning) and not already_notified(state, today, "morning"):
-            text = notify.build_morning(active, today)
+            text = notify.build_morning(active, today, site_url)
             if text and notify.send(settings, text):
                 mark_notified(state, today, "morning")
                 stats["notified"].append("morning")
         elif notify.window_of(hm, settings.remind_evening) and not already_notified(state, today, "evening"):
-            text = notify.build_evening(active, today, settings.remind_days_before)
+            text = notify.build_evening(active, today, settings.remind_days_before, site_url)
             if text and notify.send(settings, text):
                 mark_notified(state, today, "evening")
                 stats["notified"].append("evening")
+
+        # 出错告警：每天最多一条，避免故障期间反复打扰
+        if stats["errors"] and not already_notified(state, today, "error"):
+            alert = notify.build_alert(stats["errors"], today, site_url)
+            if notify.send(settings, alert):
+                mark_notified(state, today, "error")
+                stats["notified"].append("error")
 
     prune_state(state)
     save_state(settings.state_path, state)
