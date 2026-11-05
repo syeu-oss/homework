@@ -12,7 +12,9 @@ param(
     [string]$Token
 )
 
-$ErrorActionPreference = "Stop"
+# 注意：不能用 Stop。git 会把普通提示写进 stderr，
+# PowerShell 5.1 在 Stop 模式下会将其误判为致命错误而中断脚本。
+$ErrorActionPreference = "Continue"
 
 $root = Split-Path $PSScriptRoot -Parent
 Set-Location $root
@@ -40,8 +42,12 @@ if (-not $Token) {
     exit 1
 }
 
-git remote remove origin 2>$null | Out-Null
-git remote add origin $RepoUrl
+$remotes = @(git remote 2>&1 | Where-Object { $_ -is [string] })
+if ($remotes -contains "origin") {
+    git remote set-url origin $RepoUrl 2>&1 | Out-Null
+} else {
+    git remote add origin $RepoUrl 2>&1 | Out-Null
+}
 
 $pushUrl = $RepoUrl -replace '^https://', "https://$Token@"
 
