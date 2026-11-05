@@ -30,6 +30,14 @@
    代码只认 WebDAV 标准，换服务商不用改任何代码，只换环境变量。
    每月 20 节课 ≈ 0.3–1.2GB，坚果云免费版勉强够，嫌紧就选后两个。
 
+   **各家的密码规则不一样，填错一定 401：**
+
+   - 坚果云：必须在「安全选项 → 第三方应用管理 → 添加应用」生成应用密码，**不能用登录密码**
+   - Koofr：用户名填邮箱，密码在 Preferences → 2-Step-Verification →「Generate app-password」生成，**不能用登录密码**
+   - InfiniCLOUD：用注册时的用户 ID 和密码（开了两步验证则用应用密码）
+
+   浏览器直接打开 WebDAV 地址会弹一个用户名/密码框，**这是正常的**（那是 HTTP Basic 认证，不是网页登录）。填对后会返回一段 XML 目录列表，看到 XML 就说明这层通了。
+
 1. **网盘建目录**：根目录建 `hw`。坚果云另需在「安全选项 → 添加应用」生成**应用密码**（不是登录密码）；InfiniCLOUD / Koofr 用账号密码或各自的应用密码即可。
 2. **GitHub 填密钥**：仓库 Settings → Secrets and variables → Actions，加 `WEBDAV_URL` / `WEBDAV_USER` / `WEBDAV_PASSWORD`，Variables 里 `SOURCE=webdav`、`TRANSCRIBE_ENGINE=whisper`。
 3. **手机装 FolderSync**，建「仅上传」任务把录音目录传到 `/hw`，并做保活设置（见下文第一节）。顺手把录音机的录音质量调成「标准」，一小时文件能从 40MB 降到 15MB 左右。
