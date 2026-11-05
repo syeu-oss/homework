@@ -20,7 +20,14 @@ from pathlib import Path
 
 from .config import SETTINGS
 from .models import now_local
-from .pipeline import doctor, mark_done, processed_docs, probe_webdav, run_once
+from .pipeline import (
+    OPTIONAL_CHECKS,
+    doctor,
+    mark_done,
+    processed_docs,
+    probe_webdav,
+    run_once,
+)
 from .store import load_pool
 
 
@@ -34,8 +41,12 @@ def _cmd_doctor(_: argparse.Namespace) -> int:
     print("环境自检\n" + "=" * 46)
     failed = 0
     for name, ok, detail in doctor(SETTINGS):
-        mark = "OK  " if ok else "FAIL"
-        if not ok:
+        if ok:
+            mark = "OK  "
+        elif name in OPTIONAL_CHECKS:
+            mark = "WARN"
+        else:
+            mark = "FAIL"
             failed += 1
         print(f"[{mark}] {name}: {detail}")
     print("=" * 46)

@@ -65,8 +65,20 @@ def run_once(settings: Settings = SETTINGS, force: bool = False, do_notify: bool
     source = get_source(settings.source, settings)
     transcriber = get_transcriber(settings.transcribe_engine, settings)
 
+    def _should_skip(doc_id: str, revision: str) -> bool:
+        """在取文件之前就问：这个版本处理过没有。
+
+        网盘流量按月计量，重复下载是最容易把额度烧光的漏洞。
+        """
+        if force or not revision:
+            return False
+        if already_seen(state, doc_id, revision):
+            stats["skipped"] += 1
+            return True
+        return False
+
     try:
-        raw_items = source.fetch(since)
+        raw_items = source.fetch(since, should_skip=_should_skip)
     except Exception as exc:  # 取数失败不该让历史作业丢失
         stats["errors"].append(f"取数失败: {exc}")
         _log_error(settings, f"[fetch] {exc}\n{traceback.format_exc()}")
@@ -168,6 +180,11 @@ def mark_done(settings: Settings, assignment_id: str) -> bool:
     markdown.write(settings.root / "HOMEWORK.md", pool, today, now_local(settings.timezone).strftime("%Y-%m-%d %H:%M"))
     site.build(pool, today, settings.root / "index.html")
     return True
+
+
+# 这些检查项不通过也不影响主链路，界面上标 WARN 而不是 FAIL，
+# 否则每次自检都会报「失败」，把人吓一跳。
+OPTIONAL_CHECKS = {"LLM 增强", "推送通道"}
 
 
 def doctor(settings: Settings = SETTINGS) -> list[tuple[str, bool, str]]:

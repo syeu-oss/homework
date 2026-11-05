@@ -52,7 +52,12 @@ class RawItem:
 class Source(Protocol):
     name: str
 
-    def fetch(self, since: date) -> list[RawItem]:
+    def fetch(self, since: date, should_skip=None) -> list[RawItem]:
+        """取一批待处理输入。
+
+        `should_skip(id, revision)` 可选：实现方可以在真正取文件之前询问，
+        答 True 就别取（省流量、省时间）。
+        """
         ...
 
 

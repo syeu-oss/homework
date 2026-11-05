@@ -73,7 +73,13 @@ class WebDavSource:
             entries.append((urljoin(self.base_url, href.lstrip("/")), name, size, lastmod.strip()))
         return entries
 
-    def fetch(self, since: date) -> list[RawItem]:
+    def fetch(self, since: date, should_skip=None) -> list[RawItem]:
+        """拉取远端新文件。
+
+        `should_skip(item_id, revision)` 会在**下载之前**被询问一次：
+        已经处理过的文件连字节都不下载。网盘的下载流量按月计量，
+        所以这一步直接决定会不会把额度烧光。
+        """
         if not self.base_url or not self.user:
             raise RuntimeError("WebDAV 未配置：需要 WEBDAV_URL / WEBDAV_USER / WEBDAV_PASSWORD")
 
@@ -87,22 +93,31 @@ class WebDavSource:
             if suffix not in AUDIO_EXTS and suffix not in TEXT_EXTS:
                 continue
 
+            item_id = hashlib.sha1(name.encode("utf-8")).hexdigest()[:16]
+            revision = f"{size}:{lastmod}" if (size and lastmod) else ""
+            recorded_at = parse_recorded_at(name, self.timezone)
+
+            # 文件名能看出日期 → 先判断该不该处理，再决定要不要下载
+            if recorded_at is not None:
+                if recorded_at < cutoff:
+                    continue
+                if should_skip and should_skip(item_id, revision):
+                    continue
+
             local = self.inbox / name
             if not local.exists():
                 resp = requests.get(url, auth=self._auth(), timeout=120)
                 resp.raise_for_status()
                 local.write_bytes(resp.content)
 
-            recorded_at = parse_recorded_at(name, self.timezone)
             if recorded_at is None:
                 recorded_at = datetime.fromtimestamp(local.stat().st_mtime, tz=tz)
-            if recorded_at < cutoff:
-                continue
+                if recorded_at < cutoff:
+                    continue
 
-            item_id = hashlib.sha1(name.encode("utf-8")).hexdigest()[:16]
-            # PROPFIND 偶尔不给 content-length，退回本地文件大小
-            effective_size = size or (local.stat().st_size if local.exists() else 0)
-            revision = f"{effective_size}:{lastmod}" if lastmod else ""
+            if not revision:
+                revision = f"{local.stat().st_size}:{int(local.stat().st_mtime)}"
+
             if suffix in TEXT_EXTS:
                 text = local.read_text(encoding="utf-8", errors="ignore")
                 if not text.strip():

@@ -10,24 +10,29 @@
 |---|---|---|
 | 云端定时任务 | ✅ 已通 | Actions 每 30 分钟跑一次，Pages 看板每天自动刷新日期 |
 | 看板 / 日历 / Markdown 产出 | ✅ 已通 | 线上 `https://syeu-oss.github.io/homework/` 可打开 |
-| 网盘（WebDAV）读取 | ❌ 未配 | 云端没有 `WEBDAV_*` 密钥，取数直接失败，作业池里还是样例数据 |
+| 网盘（WebDAV）读取 | ❌ 未配 | 云端没有 `WEBDAV_*` 密钥，取数直接失败 |
 | 手机录音自动上传 | ❌ 未配 | FolderSync 还没建同步任务 |
 | 飞书推送 | ❌ 未配 | 没有 `FEISHU_WEBHOOK`，不会发消息 |
 
 也就是说：**电脑侧和云端全部就绪，缺的正是手机上这一段。**
-作业池现在那 4 条是 demo 样例（数据结构 / 操作系统示例文本），不是你的真实作业，接上真实录音前先按下面第 0 步清掉。
-
-### 0. 清掉样例数据（只做一次）
-
-```powershell
-Remove-Item data/homework.json, data/state.json -ErrorAction SilentlyContinue
-```
+演示数据已清空，看板现在是空状态，等真实录音进来。
 
 ### 5 个动作，顺序不要乱
 
-1. **网盘建目录**：坚果云根目录建 `hw`，再在「安全选项 → 添加应用」生成一个应用密码（不是登录密码）。
+0. **先选网盘**（决定后面填什么地址）：
+
+| 备选 | 免费额度 | WebDAV 地址 |
+|---|---|---|
+| 坚果云 | 上传 1GB/月、下载 3GB/月 | `https://dav.jianguoyun.com/dav/` |
+| InfiniCLOUD | 20GB，不限流量（注册有时排队） | `https://用户名.teracloud.jp/dav/` |
+| Koofr | 10GB，不限流量 | `https://app.koofr.net/dav/Koofr` |
+
+   代码只认 WebDAV 标准，换服务商不用改任何代码，只换环境变量。
+   每月 20 节课 ≈ 0.3–1.2GB，坚果云免费版勉强够，嫌紧就选后两个。
+
+1. **网盘建目录**：根目录建 `hw`。坚果云另需在「安全选项 → 添加应用」生成**应用密码**（不是登录密码）；InfiniCLOUD / Koofr 用账号密码或各自的应用密码即可。
 2. **GitHub 填密钥**：仓库 Settings → Secrets and variables → Actions，加 `WEBDAV_URL` / `WEBDAV_USER` / `WEBDAV_PASSWORD`，Variables 里 `SOURCE=webdav`、`TRANSCRIBE_ENGINE=whisper`。
-3. **手机装 FolderSync**，建「仅上传」任务把录音目录传到 `/hw`，并做保活设置（见下文第一节）。
+3. **手机装 FolderSync**，建「仅上传」任务把录音目录传到 `/hw`，并做保活设置（见下文第一节）。顺手把录音机的录音质量调成「标准」，一小时文件能从 40MB 降到 15MB 左右。
 4. **飞书建机器人**，把 webhook 填进 `FEISHU_WEBHOOK`。
 5. **验证**：手机录一段带作业的话，等 15 分钟后按下面方法逐环确认。
 

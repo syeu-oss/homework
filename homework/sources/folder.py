@@ -17,7 +17,7 @@ class FolderSource:
         self.directory = Path(directory)
         self.timezone = timezone
 
-    def fetch(self, since: date) -> list[RawItem]:
+    def fetch(self, since: date, should_skip=None) -> list[RawItem]:
         if not self.directory.exists():
             return []
 

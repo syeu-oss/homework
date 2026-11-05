@@ -38,7 +38,7 @@ _SAMPLES = [
 class DemoSource:
     name = "demo"
 
-    def fetch(self, since: date) -> list[RawItem]:
+    def fetch(self, since: date, should_skip=None) -> list[RawItem]:
         tz = ZoneInfo("Asia/Shanghai")
         today = datetime.now(tz).date()
         items: list[RawItem] = []
