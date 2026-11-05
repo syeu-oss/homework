@@ -1,4 +1,4 @@
-# 一次性推送脚本：把本地仓库推到你的 GitHub
+﻿# 一次性推送脚本：把本地仓库推到你的 GitHub
 #
 # 用法（在项目根目录执行）：
 #   powershell -ExecutionPolicy Bypass -File tools\push-to-github.ps1
