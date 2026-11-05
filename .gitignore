@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+config.local.toml
+
+# 音频与原始输入
+data/inbox/*
+!data/inbox/.gitkeep
+*.m4a
+*.mp3
+*.wav
+*.amr
+*.aac
+*.opus
+
+# 运行产物
+data/errors.log
+.cache/
+srv_err.txt
+srv_out.txt
+shot*.png

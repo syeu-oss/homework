@@ -1,0 +1,113 @@
+name: homework-reminder
+
+on:
+  schedule:
+    # 每 30 分钟一次。真正决定「发不发提醒」的是代码里的时间窗口，
+    # 所以 cron 抖动 5-30 分钟不会导致漏发或重发。
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "忽略已处理记录，强制重跑"
+        type: boolean
+        default: false
+
+concurrency:
+  group: homework-reminder
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Shanghai
+      SOURCE: ${{ vars.SOURCE || 'webdav' }}
+      TRANSCRIBE_ENGINE: ${{ vars.TRANSCRIBE_ENGINE || 'whisper' }}
+      WHISPER_MODEL: ${{ vars.WHISPER_MODEL || 'small' }}
+      WEBDAV_URL: ${{ secrets.WEBDAV_URL }}
+      WEBDAV_USER: ${{ secrets.WEBDAV_USER }}
+      WEBDAV_PASSWORD: ${{ secrets.WEBDAV_PASSWORD }}
+      WEBDAV_DIR: ${{ vars.WEBDAV_DIR || '/hw' }}
+      LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      LLM_MODEL: ${{ vars.LLM_MODEL || 'gpt-4o-mini' }}
+      FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+      SITE_BASE_URL: ${{ vars.SITE_BASE_URL }}
+
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 缓存 Whisper 模型
+        if: env.TRANSCRIBE_ENGINE == 'whisper'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: whisper-${{ env.WHISPER_MODEL }}
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          if [ "$TRANSCRIBE_ENGINE" = "whisper" ]; then
+            pip install -r requirements-whisper.txt
+          fi
+
+      - name: 环境自检
+        run: python -m homework.cli doctor || true
+
+      - name: 执行一次完整流程
+        run: |
+          if [ "${{ inputs.force }}" = "true" ]; then
+            python -m homework.cli run --force
+          else
+            python -m homework.cli run
+          fi
+
+      - name: 提交产物
+        run: |
+          git config user.name "homework-bot"
+          git config user.email "homework-bot@users.noreply.github.com"
+          git add data/homework.json data/state.json HOMEWORK.md index.html data/homework.ics 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "没有变化，跳过提交"
+          else
+            git commit -m "chore: 更新作业池 [skip ci]"
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" || true
+            git push
+          fi
+
+      - name: 准备站点
+        run: |
+          mkdir -p _site
+          cp index.html _site/ 2>/dev/null || true
+          cp data/homework.ics _site/ 2>/dev/null || true
+          cp HOMEWORK.md _site/ 2>/dev/null || true
+          cp homework/assets/manifest.json _site/ 2>/dev/null || true
+          cp homework/assets/icon.svg _site/ 2>/dev/null || true
+
+      - name: 上传 Pages 产物
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 部署到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
